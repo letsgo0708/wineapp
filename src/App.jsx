@@ -834,7 +834,7 @@ function LotModal({ wine, merchants, onClose, onSubmit }) {
             type="date"
             value={purchasedAt}
             onChange={(e) => setPurchasedAt(e.target.value)}
-            className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
+            className="block w-full appearance-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
           />
         </div>
 
