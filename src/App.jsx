@@ -687,14 +687,6 @@ function WineDetailScreen({
           </div>
         </section>
 
-        <div className="pt-2">
-          <button
-            onClick={onOpenMerchantModal}
-            className="w-full rounded-2xl border border-zinc-700 px-4 py-3 text-sm text-zinc-100"
-          >
-            구입처 프리셋 관리
-          </button>
-        </div>
       </main>
     </div>
   );
@@ -1271,8 +1263,8 @@ function ModalShell({ title, children, onClose }) {
 function ModalActions({ onClose, submitLabel, submitDisabled = false }) {
   return (
     <div
-      className="grid grid-cols-2 gap-3 pt-2 pb-6"
-      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)" }}
+      className="grid grid-cols-2 gap-3 pt-2"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}
     >
       <button
         type="button"
