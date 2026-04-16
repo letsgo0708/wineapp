@@ -989,7 +989,7 @@ function DrinkModal({ wine, lots, onClose, onSubmit }) {
             type="datetime-local"
             value={drankAt}
             onChange={(e) => setDrankAt(e.target.value)}
-            className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
+            className="block w-full appearance-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
           />
         </div>
 
