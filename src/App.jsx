@@ -1270,7 +1270,10 @@ function ModalShell({ title, children, onClose }) {
 
 function ModalActions({ onClose, submitLabel, submitDisabled = false }) {
   return (
-    <div className="grid grid-cols-2 gap-3 pt-2">
+    <div
+      className="grid grid-cols-2 gap-3 pt-2 pb-6"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)" }}
+    >
       <button
         type="button"
         onClick={onClose}
