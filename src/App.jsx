@@ -9,9 +9,9 @@ import {
 } from "./domain";
 
 const seedWines = [
-  { id: "wine_1", type: "red", name: "Domaine A Pinot Noir" },
-  { id: "wine_2", type: "white", name: "Cloudy Bay Sauvignon Blanc" },
-  { id: "wine_3", type: "champagne", name: "Billecart-Salmon Brut Réserve" },
+  { id: "wine_1", type: "red", name: "토브렉 우드커터스 쉬라즈" },
+  { id: "wine_2", type: "white", name: "파스칼 졸리베 상세르 블랑" },
+  { id: "wine_3", type: "champagne", name: "드라피에 클레어 밸리스" },
 ];
 
 const seedLots = [
