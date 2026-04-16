@@ -1264,7 +1264,7 @@ function ModalActions({ onClose, submitLabel, submitDisabled = false }) {
   return (
     <div
       className="grid grid-cols-2 gap-3 pt-2"
-      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 30px)" }}
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 50px)" }}
     >
       <button
         type="button"
