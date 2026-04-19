@@ -7,9 +7,9 @@ import {
 } from "./domain";
 
 const seedWines = [
-  { id: "wine_1", type: "red", name: "Domaine A Pinot Noir" },
-  { id: "wine_2", type: "white", name: "Cloudy Bay Sauvignon Blanc" },
-  { id: "wine_3", type: "champagne", name: "Billecart-Salmon Brut Réserve" },
+  { id: "wine_1", type: "red", name: "토브렉 우드커터스 쉬라" },
+  { id: "wine_2", type: "white", name: "토마 라빌 샤블리" },
+  { id: "wine_3", type: "champagne", name: "뽀므리 로얄 브뤼" },
 ];
 
 const seedLots = [
@@ -34,7 +34,7 @@ const seedLots = [
     merchant: "동네 와인샵",
     purchasedAt: "2025-01-25",
     qty: 1,
-    remaining: 1,
+    remaining: 0,
     priceInput: 61000,
     onnuriUsed: false,
     discountRate: 0.9,
@@ -155,6 +155,8 @@ function App() {
   const [selectedWineId, setSelectedWineId] = useState(null);
   const [selectedLotId, setSelectedLotId] = useState(null);
   const [modal, setModal] = useState(null);
+  const [showAllWines, setShowAllWines] = useState(false);
+  const [showAllLots, setShowAllLots] = useState(false);  
 
   const selectedWine = useMemo(
     () => wines.find((wine) => wine.id === selectedWineId) || null,
@@ -173,32 +175,34 @@ function App() {
         return { ...wine, summary };
       })
       .filter((wine) => wine.type === activeType)
+      .filter((wine) => (showAllWines ? true : wine.summary.totalQty > 0))
       .sort((a, b) => {
         if (a.summary.avgCost !== b.summary.avgCost) {
           return a.summary.avgCost - b.summary.avgCost;
         }
         return a.name.localeCompare(b.name);
       });
-  }, [wines, lots, activeType]);
+  }, [wines, lots, activeType, showAllWines]);
 
   const selectedWineLots = useMemo(() => {
     if (!selectedWineId) return [];
+
     return wineLots(lots, selectedWineId)
+      .filter((lot) => (showAllLots ? true : lot.remaining > 0))
       .slice()
       .sort((a, b) => {
         if (a.purchasedAt < b.purchasedAt) return -1;
         if (a.purchasedAt > b.purchasedAt) return 1;
         return String(a.id).localeCompare(String(b.id));
       });
-  }, [lots, selectedWineId]);
-
-  const selectedWineDrinkLogs = useMemo(() => {
-    if (!selectedWineId) return [];
-    return drinkLogs
-      .filter((log) => log.wineId === selectedWineId)
-      .slice()
-      .sort((a, b) => String(b.drankAt).localeCompare(String(a.drankAt)));
-  }, [drinkLogs, selectedWineId]);
+  }, [lots, selectedWineId, showAllLots]);
+    const selectedWineDrinkLogs = useMemo(() => {
+      if (!selectedWineId) return [];
+      return drinkLogs
+        .filter((log) => log.wineId === selectedWineId)
+        .slice()
+        .sort((a, b) => String(b.drankAt).localeCompare(String(a.drankAt)));
+    }, [drinkLogs, selectedWineId]);
 
   const selectedSummary = useMemo(() => {
     if (!selectedWineId) return { totalQty: 0, avgCost: 0, vintages: [] };
@@ -455,6 +459,10 @@ function App() {
             activeType={activeType}
             setActiveType={setActiveType}
             wines={visibleWines}
+
+            showAllWines={showAllWines}
+            onToggleShowAllWines={() => setShowAllWines((prev) => !prev)}
+
             onSelectWine={setSelectedWineId}
             onOpenWineModal={() => openModal("wine")}
             onOpenMerchantModal={() => openModal("merchant")}
@@ -463,8 +471,13 @@ function App() {
           <WineDetailScreen
             wine={selectedWine}
             lots={selectedWineLots}
+            allLots={wineLots(lots, selectedWineId)}
             drinkLogs={selectedWineDrinkLogs}
             summary={selectedSummary}
+
+            showAllLots={showAllLots}
+            onToggleShowAllLots={() => setShowAllLots((prev) => !prev)}
+
             onBack={() => setSelectedWineId(null)}
             onOpenLotModal={() => openModal("lot")}
             onOpenLotEditModal={(lotId) => openModal("lotEdit", lotId)}
@@ -525,6 +538,8 @@ function WineListScreen({
   activeType,
   setActiveType,
   wines,
+  showAllWines,
+  onToggleShowAllWines,
   onSelectWine,
   onOpenWineModal,
   onOpenMerchantModal,
@@ -538,20 +553,53 @@ function WineListScreen({
               <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
                 Wine Inventory
               </p>
-              <h1 className="mt-1 text-xl font-semibold">1인용 와인 재고정리</h1>
+              <h1 className="mt-1 text-xl font-semibold">댕댕이네 와인창고</h1>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={onOpenMerchantModal}
-                className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-100"
+                title="구입처 프리셋 관리"
+                aria-label="구입처 프리셋 관리"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 text-lg text-zinc-100 active:opacity-80"
               >
-                구입처
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className="h-5 w-5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19.4 15a1.7 1.7 0 0 0 .34 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.34 1.7 1.7 0 0 0-1 1.54V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.54 1.7 1.7 0 0 0-1.82.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.54-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.82l-.06-.06A2 2 0 0 1 7.03 4.3l.06.06A1.7 1.7 0 0 0 9 4.02 1.7 1.7 0 0 0 10 2.48V2a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.54 1.7 1.7 0 0 0 1.82-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.46.18.98.27 1.54.27H21a2 2 0 0 1 0 4h-.09c-.56 0-1.08.09-1.54.27Z"
+                  />
+                </svg>
               </button>
+
+
               <button
                 onClick={onOpenWineModal}
-                className="rounded-xl bg-rose-500 px-3 py-2 text-sm font-medium text-white"
+                title="와인 추가"
+                aria-label="와인 추가"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 text-lg font-semibold text-zinc-100 active:opacity-80"
               >
-                + 와인 추가
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-5 w-5"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                </svg>
               </button>
             </div>
           </div>
@@ -578,6 +626,18 @@ function WineListScreen({
       </header>
 
       <main className="space-y-3 px-4 pt-4">
+        {/* 🔥 여기 추가 */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-zinc-500">
+            와인 {wines.length}종
+          </span>
+          <button
+            onClick={onToggleShowAllWines}
+            className="rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 active:opacity-80"
+          >
+            {showAllWines ? "남은 것만" : "전체 보기"}
+          </button>
+        </div>
         {wines.length === 0 ? (
           <EmptyState
             title="이 타입의 와인이 없어요."
@@ -602,13 +662,11 @@ function WineListScreen({
                     <p className="text-lg font-semibold leading-tight">
                       {wine.name}
                     </p>
-                    <p className="mt-1 text-sm text-zinc-400">
-                      {typeLabels[wine.type]}
-                    </p>
+                    
                   </div>
 
                   <div
-                    className={`rounded-full px-3 py-1 text-xs ${
+                    className={`rounded-full px-3 py-1 text-sm ${
                       isOutOfStock
                         ? "bg-zinc-800 text-zinc-400"
                         : "bg-zinc-800 text-zinc-300"
@@ -618,20 +676,6 @@ function WineListScreen({
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <InfoTile
-                    label="빈티지"
-                    value={
-                      wine.summary.vintages.length
-                        ? wine.summary.vintages.join(" · ")
-                        : "—"
-                    }
-                  />
-                  <InfoTile
-                    label="평균 보유원가"
-                    value={formatCurrency(wine.summary.avgCost)}
-                  />
-                </div>
               </button>
             );
           })
@@ -644,8 +688,11 @@ function WineListScreen({
 function WineDetailScreen({
   wine,
   lots,
+  allLots,
   drinkLogs,
   summary,
+  showAllLots,
+  onToggleShowAllLots,
   onBack,
   onOpenLotModal,
   onOpenLotEditModal,
@@ -699,16 +746,30 @@ function WineDetailScreen({
 
       <main className="space-y-6 px-4 pt-4">
         <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">구입 로트</h2>
-            <span className="text-xs text-zinc-500">오래된 순</span>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold">구입 로트</h2>
+              <span className="text-xs text-zinc-500">오래된 순</span>
+            </div>
+
+            <button
+              onClick={onToggleShowAllLots}
+              className="rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 active:opacity-80"
+            >
+              {showAllLots ? "남은 것만" : "전체 보기"}
+            </button>
           </div>
 
           <div className="space-y-3">
-            {lots.length === 0 ? (
+            {allLots.length === 0 ? (
               <EmptyState
                 title="아직 등록된 구입 기록이 없어요."
                 description="구입 추가로 첫 로트를 등록해보세요."
+              />
+            ) : lots.length === 0 ? (
+              <EmptyState
+                title="남아있는 로트가 없어요."
+                description="전체 보기를 눌러 과거 기록을 확인하세요."
               />
             ) : (
               lots.map((lot) => {
