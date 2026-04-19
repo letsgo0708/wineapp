@@ -730,7 +730,7 @@ function WineDetailScreen({
                     </div>
 
                       <div className="text-right">
-                        <p className="text-lg font-semibold tracking-tight">
+                        <p className="text-base font-semibold tracking-tight">
                           {lot.remaining} / {lot.qty}병
                         </p>
                       </div>
