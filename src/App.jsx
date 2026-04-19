@@ -134,7 +134,10 @@ function formatVintage(vintage) {
 
 function formatDate(dateString) {
   if (!dateString) return "—";
-  return dateString;
+
+  const [year, month, day] = dateString.split("-");
+
+  return `${year.slice(2)}.${month}.${day}`;
 }
 
 function formatDateTime(dateTimeString) {
@@ -664,27 +667,33 @@ function WineDetailScreen({
             <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
               {typeLabels[wine.type]}
             </p>
-            <h1 className="mt-1 text-xl font-semibold">{wine.name}</h1>
+
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <h1 className="text-xl font-semibold leading-tight">
+                {wine.name}
+              </h1>
+
+              <button
+                onClick={onOpenLotModal}
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-xl font-semibold text-white active:opacity-80"
+                title="구입 추가"
+              >
+                +
+              </button>
+            </div>
+
             <p className="mt-2 text-sm text-zinc-400">
               보유 빈티지:{" "}
               {summary.vintages.length ? summary.vintages.join(" · ") : "—"}
             </p>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <SummaryCard label="총 보유수량" value={`${summary.totalQty}병`} />
-            <SummaryCard label="평균 보유원가" value={formatCurrency(summary.avgCost)} />
-            <SummaryCard label="음용 처리" value="로트별" />
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <SummaryCard label="수량" value={`${summary.totalQty}병`} />
+            <SummaryCard label="평균 가격" value={formatCurrency(summary.avgCost)} />
           </div>
 
-          <div className="mt-4">
-            <button
-              onClick={onOpenLotModal}
-              className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-medium text-white"
-            >
-              + 구입 추가
-            </button>
-          </div>
+          
         </div>
       </header>
 
@@ -1481,9 +1490,9 @@ function ModalActions({ onClose, submitLabel, submitDisabled = false }) {
 
 function SummaryCard({ label, value }) {
   return (
-    <div className="rounded-2xl bg-zinc-900 p-3">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-2 text-sm font-semibold">{value}</p>
+    <div className="rounded-2xl bg-zinc-900 px-3 py-3 flex items-center justify-between">
+      <span className="text-xs text-zinc-500">{label}</span>
+      <span className="text-base font-semibold">{value}</span>
     </div>
   );
 }
