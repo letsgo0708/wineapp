@@ -4,14 +4,12 @@ import {
   calcPricePaid,
   wineLots,
   computeSummary,
-  fifoPlan,
-  applyFifo,
 } from "./domain";
 
 const seedWines = [
-  { id: "wine_1", type: "red", name: "토브렉 우드커터스 쉬라즈" },
-  { id: "wine_2", type: "white", name: "파스칼 졸리베 상세르 블랑" },
-  { id: "wine_3", type: "champagne", name: "드라피에 클레어 밸리스" },
+  { id: "wine_1", type: "red", name: "Domaine A Pinot Noir" },
+  { id: "wine_2", type: "white", name: "Cloudy Bay Sauvignon Blanc" },
+  { id: "wine_3", type: "champagne", name: "Billecart-Salmon Brut Réserve" },
 ];
 
 const seedLots = [
@@ -104,8 +102,8 @@ const seedDrinkLogs = [
 
 const seedMerchants = [
   { id: "merchant_1", name: "코스트코" },
-  { id: "merchant_2", name: "새마을구판장" },
-  { id: "merchant_3", name: "동탄1 세븐일레븐" },
+  { id: "merchant_2", name: "동네 와인샵" },
+  { id: "merchant_3", name: "와인앤모어" },
   { id: "merchant_4", name: "신세계백화점" },
 ];
 
@@ -116,7 +114,9 @@ const typeLabels = {
 };
 
 function normalizeWineKey(name, type) {
-  return `${String(name).trim().toLowerCase()}__${String(type).trim().toLowerCase()}`;
+  return `${String(name).trim().toLowerCase()}__${String(type)
+    .trim()
+    .toLowerCase()}`;
 }
 
 function formatCurrency(value) {
@@ -125,7 +125,9 @@ function formatCurrency(value) {
 }
 
 function formatVintage(vintage) {
-  if (vintage === null || vintage === "" || typeof vintage === "undefined") return "—";
+  if (vintage === null || vintage === "" || typeof vintage === "undefined") {
+    return "—";
+  }
   return String(vintage);
 }
 
@@ -147,11 +149,17 @@ function App() {
 
   const [activeType, setActiveType] = useState("red");
   const [selectedWineId, setSelectedWineId] = useState(null);
+  const [selectedLotId, setSelectedLotId] = useState(null);
   const [modal, setModal] = useState(null);
 
   const selectedWine = useMemo(
     () => wines.find((wine) => wine.id === selectedWineId) || null,
     [wines, selectedWineId]
+  );
+
+  const selectedLot = useMemo(
+    () => lots.find((lot) => lot.id === selectedLotId) || null,
+    [lots, selectedLotId]
   );
 
   const visibleWines = useMemo(() => {
@@ -193,8 +201,15 @@ function App() {
     return computeSummary(lots, selectedWineId);
   }, [lots, selectedWineId]);
 
-  const openModal = (name) => setModal(name);
-  const closeModal = () => setModal(null);
+  function openModal(name, lotId = null) {
+    setSelectedLotId(lotId);
+    setModal(name);
+  }
+
+  function closeModal() {
+    setModal(null);
+    setSelectedLotId(null);
+  }
 
   function addWine(form) {
     const normalized = normalizeWineKey(form.name, form.type);
@@ -205,7 +220,8 @@ function App() {
     if (exists) {
       return {
         ok: false,
-        error: "이미 등록된 와인입니다. 기존 와인 상세에서 '구입 추가'를 이용해주세요.",
+        error:
+          "이미 등록된 와인입니다. 기존 와인 상세에서 '구입 추가'를 이용해주세요.",
       };
     }
 
@@ -255,37 +271,123 @@ function App() {
     return { ok: true, error: null };
   }
 
-  function drinkOneBottle(form) {
-    if (!selectedWineId) {
-      return { ok: false, error: "선택된 와인이 없습니다." };
+  function updateLot(lotId, form) {
+    const targetLot = lots.find((lot) => lot.id === lotId);
+
+    if (!targetLot) {
+      return { ok: false, error: "수정할 로트를 찾을 수 없습니다." };
     }
 
-    const result = applyFifo(lots, selectedWineId, 1);
+    const canEditQty = targetLot.qty === targetLot.remaining;
+    const nextQty = Number(form.qty);
+    const priceInput = Number(form.priceInput);
+    const vintage =
+      form.vintage === "" || form.vintage === null ? null : Number(form.vintage);
 
-    if (!result.ok) {
-      return { ok: false, error: result.error };
+    if (!form.merchant.trim()) {
+      return { ok: false, error: "구입처를 입력해주세요." };
+    }
+    if (!form.purchasedAt) {
+      return { ok: false, error: "구입일을 입력해주세요." };
+    }
+    if (priceInput < 0 || Number.isNaN(priceInput)) {
+      return { ok: false, error: "가격은 0 이상의 숫자여야 합니다." };
+    }
+    if (form.vintage !== "" && !Number.isInteger(Number(form.vintage))) {
+      return { ok: false, error: "빈티지는 비워두거나 정수로 입력해주세요." };
     }
 
-    const picked = result.allocations[0];
-    if (!picked) {
+    if (canEditQty) {
+      if (!Number.isInteger(nextQty) || nextQty < 1) {
+        return { ok: false, error: "수량은 1 이상의 정수여야 합니다." };
+      }
+    }
+
+    const pricePaid = calcPricePaid(priceInput, form.onnuriUsed);
+
+    setLots((prev) =>
+      prev.map((lot) => {
+        if (lot.id !== lotId) return lot;
+
+        return {
+          ...lot,
+          merchant: form.merchant.trim(),
+          purchasedAt: form.purchasedAt,
+          vintage,
+          qty: canEditQty ? nextQty : lot.qty,
+          remaining: canEditQty ? nextQty : lot.remaining,
+          priceInput,
+          onnuriUsed: form.onnuriUsed,
+          discountRate: 0.9,
+          pricePaid,
+          memo: form.memo.trim(),
+        };
+      })
+    );
+
+    closeModal();
+
+    return { ok: true, error: null };
+  }
+
+  function deleteLot(lotId) {
+    const targetLot = lots.find((lot) => lot.id === lotId);
+
+    if (!targetLot) {
+      return { ok: false, error: "삭제할 로트를 찾을 수 없습니다." };
+    }
+
+    if (targetLot.qty !== targetLot.remaining) {
+      return {
+        ok: false,
+        error: "이미 마신 로트는 삭제할 수 없습니다.",
+      };
+    }
+
+    const confirmed = window.confirm(
+      "이 로트를 삭제할까요?\n아직 마시지 않은 로트만 삭제할 수 있습니다."
+    );
+    if (!confirmed) {
+      return { ok: false, error: "삭제가 취소되었습니다." };
+    }
+
+    setLots((prev) => prev.filter((lot) => lot.id !== lotId));
+    return { ok: true, error: null };
+  }
+
+  function drinkOneBottleFromLot(lotId, form) {
+    const targetLot = lots.find((lot) => lot.id === lotId);
+
+    if (!targetLot) {
       return { ok: false, error: "차감할 로트를 찾을 수 없습니다." };
+    }
+
+    if (targetLot.remaining <= 0) {
+      return { ok: false, error: "남은 재고가 없어 처리할 수 없어요." };
     }
 
     const newLog = {
       id: safeId("drink"),
-      wineId: selectedWineId,
+      wineId: targetLot.wineId,
       drankAt: form.drankAt,
       place: form.place.trim(),
       pairing: form.pairing.trim(),
       rating: Number(form.rating),
       repurchase: form.repurchase,
       memo: form.memo.trim(),
-      lotId: picked.lotId,
-      vintageSnapshot: picked.vintageSnapshot ?? null,
+      lotId: targetLot.id,
+      vintageSnapshot: targetLot.vintage ?? null,
     };
 
-    setLots(result.nextLots);
+    setLots((prev) =>
+      prev.map((lot) =>
+        lot.id === lotId
+          ? { ...lot, remaining: Math.max(0, lot.remaining - 1) }
+          : lot
+      )
+    );
     setDrinkLogs((prev) => [newLog, ...prev]);
+
     closeModal();
 
     return { ok: true, error: null };
@@ -307,7 +409,6 @@ function App() {
     };
 
     setMerchants((prev) => [...prev, newMerchant]);
-
     return { ok: true, error: null };
   }
 
@@ -342,8 +443,6 @@ function App() {
     return { ok: true, error: null };
   }
 
-
-
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto min-h-screen max-w-md bg-zinc-950">
@@ -364,8 +463,9 @@ function App() {
             summary={selectedSummary}
             onBack={() => setSelectedWineId(null)}
             onOpenLotModal={() => openModal("lot")}
-            onOpenDrinkModal={() => openModal("drink")}
-            onOpenMerchantModal={() => openModal("merchant")}
+            onOpenLotEditModal={(lotId) => openModal("lotEdit", lotId)}
+            onOpenLotDrinkModal={(lotId) => openModal("lotDrink", lotId)}
+            onDeleteLot={deleteLot}
           />
         )}
 
@@ -375,6 +475,7 @@ function App() {
 
         {modal === "lot" && selectedWine && (
           <LotModal
+            mode="create"
             wine={selectedWine}
             merchants={merchants}
             onClose={closeModal}
@@ -382,16 +483,27 @@ function App() {
           />
         )}
 
-        {modal === "drink" && selectedWine && (
-          <DrinkModal
+        {modal === "lotEdit" && selectedWine && selectedLot && (
+          <LotModal
+            mode="edit"
             wine={selectedWine}
-            lots={selectedWineLots}
+            merchants={merchants}
+            initialLot={selectedLot}
             onClose={closeModal}
-            onSubmit={drinkOneBottle}
+            onSubmit={(form) => updateLot(selectedLot.id, form)}
           />
         )}
 
-         {modal === "merchant" && (
+        {modal === "lotDrink" && selectedWine && selectedLot && (
+          <DrinkModal
+            wine={selectedWine}
+            lot={selectedLot}
+            onClose={closeModal}
+            onSubmit={(form) => drinkOneBottleFromLot(selectedLot.id, form)}
+          />
+        )}
+
+        {modal === "merchant" && (
           <MerchantModal
             merchants={merchants}
             onClose={closeModal}
@@ -404,10 +516,6 @@ function App() {
     </div>
   );
 }
-
-
-
-
 
 function WineListScreen({
   activeType,
@@ -473,52 +581,56 @@ function WineListScreen({
           />
         ) : (
           wines.map((wine) => {
-  const isOutOfStock = wine.summary.totalQty === 0;
+            const isOutOfStock = wine.summary.totalQty === 0;
 
-  return (
-    <button
-      key={wine.id}
-      onClick={() => onSelectWine(wine.id)}
-      className={`w-full rounded-3xl border p-4 text-left shadow-sm transition ${
-        isOutOfStock
-          ? "border-zinc-800 bg-zinc-900/60 text-zinc-300"
-          : "border-zinc-800 bg-zinc-900"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-lg font-semibold leading-tight">{wine.name}</p>
-          <p className="mt-1 text-sm text-zinc-400">{typeLabels[wine.type]}</p>
-        </div>
+            return (
+              <button
+                key={wine.id}
+                onClick={() => onSelectWine(wine.id)}
+                className={`w-full rounded-3xl border p-4 text-left shadow-sm transition ${
+                  isOutOfStock
+                    ? "border-zinc-800 bg-zinc-900/60 text-zinc-300"
+                    : "border-zinc-800 bg-zinc-900"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-lg font-semibold leading-tight">
+                      {wine.name}
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-400">
+                      {typeLabels[wine.type]}
+                    </p>
+                  </div>
 
-        <div
-          className={`rounded-full px-3 py-1 text-xs ${
-            isOutOfStock
-              ? "bg-zinc-800 text-zinc-400"
-              : "bg-zinc-800 text-zinc-300"
-          }`}
-        >
-          {isOutOfStock ? "재고 없음" : `${wine.summary.totalQty}병`}
-        </div>
-      </div>
+                  <div
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      isOutOfStock
+                        ? "bg-zinc-800 text-zinc-400"
+                        : "bg-zinc-800 text-zinc-300"
+                    }`}
+                  >
+                    {isOutOfStock ? "재고 없음" : `${wine.summary.totalQty}병`}
+                  </div>
+                </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        <InfoTile
-          label="빈티지"
-          value={
-            wine.summary.vintages.length
-              ? wine.summary.vintages.join(" · ")
-              : "—"
-          }
-        />
-        <InfoTile
-          label="평균 보유원가"
-          value={formatCurrency(wine.summary.avgCost)}
-        />
-      </div>
-    </button>
-  );
-})
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <InfoTile
+                    label="빈티지"
+                    value={
+                      wine.summary.vintages.length
+                        ? wine.summary.vintages.join(" · ")
+                        : "—"
+                    }
+                  />
+                  <InfoTile
+                    label="평균 보유원가"
+                    value={formatCurrency(wine.summary.avgCost)}
+                  />
+                </div>
+              </button>
+            );
+          })
         )}
       </main>
     </div>
@@ -532,11 +644,10 @@ function WineDetailScreen({
   summary,
   onBack,
   onOpenLotModal,
-  onOpenDrinkModal,
-  onOpenMerchantModal,
+  onOpenLotEditModal,
+  onOpenLotDrinkModal,
+  onDeleteLot,
 }) {
-  const hasStock = summary.totalQty > 0;
-
   return (
     <div className="pb-24">
       <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
@@ -554,33 +665,23 @@ function WineDetailScreen({
             </p>
             <h1 className="mt-1 text-xl font-semibold">{wine.name}</h1>
             <p className="mt-2 text-sm text-zinc-400">
-              보유 빈티지: {summary.vintages.length ? summary.vintages.join(" · ") : "—"}
+              보유 빈티지:{" "}
+              {summary.vintages.length ? summary.vintages.join(" · ") : "—"}
             </p>
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-2">
             <SummaryCard label="총 보유수량" value={`${summary.totalQty}병`} />
             <SummaryCard label="평균 보유원가" value={formatCurrency(summary.avgCost)} />
-            <SummaryCard label="차감 방식" value="FIFO" />
+            <SummaryCard label="음용 처리" value="로트별" />
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4">
             <button
               onClick={onOpenLotModal}
-              className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-medium text-white"
+              className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-medium text-white"
             >
               + 구입 추가
-            </button>
-            <button
-              onClick={onOpenDrinkModal}
-              disabled={!hasStock}
-              className={`rounded-2xl px-4 py-3 text-sm font-medium ${
-                hasStock
-                  ? "bg-rose-500 text-white"
-                  : "bg-zinc-800 text-zinc-500"
-              }`}
-            >
-              🍷 마심 처리
             </button>
           </div>
         </div>
@@ -600,34 +701,86 @@ function WineDetailScreen({
                 description="구입 추가로 첫 로트를 등록해보세요."
               />
             ) : (
-              lots.map((lot) => (
-                <div
-                  key={lot.id}
-                  className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm text-zinc-400">빈티지</p>
-                      <p className="mt-1 font-medium">{formatVintage(lot.vintage)}</p>
-                    </div>
-                    <div className="rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300">
-                      {lot.remaining} / {lot.qty}병
-                    </div>
-                  </div>
+              lots.map((lot) => {
+                const canDrink = lot.remaining > 0;
+                const canDelete = lot.qty === lot.remaining;
+                const canEditQty = lot.qty === lot.remaining;
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <InfoTile label="구입처" value={lot.merchant || "—"} />
-                    <InfoTile label="구입일" value={formatDate(lot.purchasedAt)} />
-                    <InfoTile label="실지불가" value={formatCurrency(lot.pricePaid)} />
-                    <InfoTile label="온누리" value={lot.onnuriUsed ? "적용" : "미적용"} />
-                  </div>
+                return (
+                  <div
+                    key={lot.id}
+                    className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4"
+                  >
+                    <div className="flex items-end justify-between gap-4">
+                      <div className="flex items-baseline gap-2">
+                      <span className="text-sm text-zinc-500">빈티지</span>
+                      <span className="text-base font-semibold">
+                        {formatVintage(lot.vintage)}
+                      </span>
+                    </div>
 
-                  <div className="mt-3">
-                    <p className="text-xs text-zinc-500">메모</p>
-                    <p className="mt-1 text-sm text-zinc-300">{lot.memo || "—"}</p>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold tracking-tight">
+                          {lot.remaining} / {lot.qty}병
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <InfoTile label="구입처" value={lot.merchant || "—"} />
+                      <InfoTile label="구입일" value={formatDate(lot.purchasedAt)} />
+                      <InfoTile label="실지불가" value={formatCurrency(lot.pricePaid)} />
+                      <InfoTile label="온누리" value={lot.onnuriUsed ? "적용" : "미적용"} />
+                    </div>
+
+                    <div className="mt-3">
+                      <p className="text-xs text-zinc-500">메모</p>
+                      <p className="mt-1 text-sm text-zinc-300">{lot.memo || "—"}</p>
+                    </div>
+
+                    {!canEditQty ? (
+                      <p className="mt-3 text-xs text-zinc-500">
+                        이미 마신 로트는 총 수량을 변경하거나 삭제할 수 없어요.
+                      </p>
+                    ) : null}
+
+                    <div className="mt-4 flex items-center justify-end gap-2 text-xs">
+                      <button
+                        onClick={() => onOpenLotEditModal(lot.id)}
+                        className="px-2 py-1 text-zinc-300 active:opacity-70"
+                      >
+                        수정
+                      </button>
+
+                      <span className="text-zinc-600">|</span>
+
+                      <button
+                        onClick={() => onDeleteLot(lot.id)}
+                        disabled={!canDelete}
+                        className={`px-2 py-1 ${
+                          canDelete ? "text-rose-400 active:opacity-70" : "text-zinc-600"
+                        }`}
+                      >
+                        삭제
+                      </button>
+                    </div>
+
+                    <div className="mt-4">
+                      <button
+                        onClick={() => onOpenLotDrinkModal(lot.id)}
+                        disabled={!canDrink}
+                        className={`w-full rounded-2xl px-4 py-3 text-sm font-medium ${
+                          canDrink
+                            ? "bg-rose-500 text-white"
+                            : "bg-zinc-800 text-zinc-500"
+                        }`}
+                      >
+                        🍷 이 로트 마심
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
@@ -642,7 +795,7 @@ function WineDetailScreen({
             {drinkLogs.length === 0 ? (
               <EmptyState
                 title="아직 마신 기록이 없어요."
-                description="마심 처리 후 기록이 여기에 쌓여요."
+                description="로트 카드에서 마심 처리 후 기록이 여기에 쌓여요."
               />
             ) : (
               drinkLogs.map((log) => (
@@ -653,7 +806,9 @@ function WineDetailScreen({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs text-zinc-500">빈티지 snapshot</p>
-                      <p className="mt-1 font-medium">{formatVintage(log.vintageSnapshot)}</p>
+                      <p className="mt-1 font-medium">
+                        {formatVintage(log.vintageSnapshot)}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-zinc-500">마신 시각</p>
@@ -686,7 +841,6 @@ function WineDetailScreen({
             )}
           </div>
         </section>
-
       </main>
     </div>
   );
@@ -745,18 +899,35 @@ function WineModal({ onClose, onSubmit }) {
   );
 }
 
-function LotModal({ wine, merchants, onClose, onSubmit }) {
+function LotModal({
+  mode = "create",
+  wine,
+  merchants,
+  initialLot = null,
+  onClose,
+  onSubmit,
+}) {
   const today = new Date().toISOString().slice(0, 10);
 
-  const [merchant, setMerchant] = useState(merchants[0]?.name || "");
-  const [purchasedAt, setPurchasedAt] = useState(today);
-  const [vintage, setVintage] = useState("");
-  const [qty, setQty] = useState(1);
-  const [priceInput, setPriceInput] = useState("");
-  const [onnuriUsed, setOnnuriUsed] = useState(false);
-  const [memo, setMemo] = useState("");
+  const [merchant, setMerchant] = useState(
+    initialLot?.merchant || merchants[0]?.name || ""
+  );
+  const [purchasedAt, setPurchasedAt] = useState(
+    initialLot?.purchasedAt || today
+  );
+  const [vintage, setVintage] = useState(
+    initialLot?.vintage === null || typeof initialLot?.vintage === "undefined"
+      ? ""
+      : String(initialLot.vintage)
+  );
+  const [qty, setQty] = useState(initialLot?.qty ?? 1);
+  const [priceInput, setPriceInput] = useState(initialLot?.priceInput ?? "");
+  const [onnuriUsed, setOnnuriUsed] = useState(initialLot?.onnuriUsed ?? false);
+  const [memo, setMemo] = useState(initialLot?.memo || "");
   const [error, setError] = useState("");
 
+  const isEdit = mode === "edit";
+  const canEditQty = initialLot ? initialLot.qty === initialLot.remaining : true;
   const pricePreview = calcPricePaid(priceInput, onnuriUsed);
 
   function handleSave(event) {
@@ -770,10 +941,6 @@ function LotModal({ wine, merchants, onClose, onSubmit }) {
       setError("구입일을 입력해주세요.");
       return;
     }
-    if (!Number.isInteger(Number(qty)) || Number(qty) < 1) {
-      setError("수량은 1 이상의 정수여야 합니다.");
-      return;
-    }
     if (priceInput === "" || Number(priceInput) < 0) {
       setError("가격은 0 이상의 숫자여야 합니다.");
       return;
@@ -781,6 +948,12 @@ function LotModal({ wine, merchants, onClose, onSubmit }) {
     if (vintage !== "" && !Number.isInteger(Number(vintage))) {
       setError("빈티지는 비워두거나 정수로 입력해주세요.");
       return;
+    }
+    if (canEditQty) {
+      if (!Number.isInteger(Number(qty)) || Number(qty) < 1) {
+        setError("수량은 1 이상의 정수여야 합니다.");
+        return;
+      }
     }
 
     const result = onSubmit({
@@ -799,11 +972,16 @@ function LotModal({ wine, merchants, onClose, onSubmit }) {
   }
 
   return (
-    <ModalShell title={`구입 추가 · ${wine.name}`} onClose={onClose}>
+    <ModalShell
+      title={isEdit ? `로트 수정 · ${wine.name}` : `구입 추가 · ${wine.name}`}
+      onClose={onClose}
+    >
       <form onSubmit={handleSave} className="space-y-4">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300">
-          로트 = 같은 조건으로 한 번에 산 구입 묶음
-        </div>
+        {!isEdit ? (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300">
+            로트 = 같은 조건으로 한 번에 산 구입 묶음
+          </div>
+        ) : null}
 
         <div>
           <label className="mb-2 block text-sm text-zinc-300">구입처</label>
@@ -831,7 +1009,9 @@ function LotModal({ wine, merchants, onClose, onSubmit }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm text-zinc-300">빈티지 (선택)</label>
+          <label className="mb-2 block text-sm text-zinc-300">
+            빈티지 (선택)
+          </label>
           <input
             inputMode="numeric"
             value={vintage}
@@ -849,9 +1029,19 @@ function LotModal({ wine, merchants, onClose, onSubmit }) {
               min="1"
               step="1"
               value={qty}
+              disabled={!canEditQty}
               onChange={(e) => setQty(e.target.value)}
-              className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
+              className={`w-full rounded-2xl border px-4 py-3 text-base ${
+                canEditQty
+                  ? "border-zinc-700 bg-zinc-900"
+                  : "border-zinc-800 bg-zinc-800 text-zinc-500"
+              }`}
             />
+            {!canEditQty ? (
+              <p className="mt-2 text-xs text-zinc-500">
+                이미 마신 로트는 총 수량을 변경할 수 없어요.
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -895,15 +1085,17 @@ function LotModal({ wine, merchants, onClose, onSubmit }) {
 
         {error ? <ErrorText text={error} /> : null}
 
-        <ModalActions onClose={onClose} submitLabel="저장" />
+        <ModalActions onClose={onClose} submitLabel={isEdit ? "저장" : "추가"} />
       </form>
     </ModalShell>
   );
 }
 
-function DrinkModal({ wine, lots, onClose, onSubmit }) {
+function DrinkModal({ wine, lot, onClose, onSubmit }) {
   const now = new Date();
-  const initialDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+  const initialDateTime = new Date(
+    now.getTime() - now.getTimezoneOffset() * 60000
+  )
     .toISOString()
     .slice(0, 16);
 
@@ -914,9 +1106,6 @@ function DrinkModal({ wine, lots, onClose, onSubmit }) {
   const [repurchase, setRepurchase] = useState("");
   const [memo, setMemo] = useState("");
   const [error, setError] = useState("");
-
-  const plan = fifoPlan(lots, 1);
-  const preview = plan?.[0] || null;
 
   function handleSave(event) {
     event.preventDefault();
@@ -960,19 +1149,14 @@ function DrinkModal({ wine, lots, onClose, onSubmit }) {
     <ModalShell title={`마심 처리 · ${wine.name}`} onClose={onClose}>
       <form onSubmit={handleSave} className="space-y-4">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-xs text-zinc-500">FIFO 차감 미리보기</p>
-          {preview ? (
-            <div className="mt-2 text-sm text-zinc-200">
-              <p>차감 로트: {preview.merchant}</p>
-              <p>구입일: {preview.purchasedAt}</p>
-              <p>빈티지: {formatVintage(preview.vintageSnapshot)}</p>
-              <p className="mt-1 text-zinc-400">1병 차감 예정</p>
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-rose-300">
-              남은 재고가 없어 처리할 수 없어요.
-            </p>
-          )}
+          <p className="text-xs text-zinc-500">선택된 로트</p>
+          <div className="mt-2 text-sm text-zinc-200">
+            <p>구입처: {lot.merchant}</p>
+            <p>구입일: {lot.purchasedAt}</p>
+            <p>빈티지: {formatVintage(lot.vintage)}</p>
+            <p>남은 수량: {lot.remaining}병</p>
+            <p className="mt-1 text-zinc-400">이 로트에서 1병 차감 예정</p>
+          </div>
         </div>
 
         <div>
@@ -981,7 +1165,7 @@ function DrinkModal({ wine, lots, onClose, onSubmit }) {
             type="datetime-local"
             value={drankAt}
             onChange={(e) => setDrankAt(e.target.value)}
-            className="block w-full appearance-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
+            className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
           />
         </div>
 
@@ -1047,11 +1231,7 @@ function DrinkModal({ wine, lots, onClose, onSubmit }) {
 
         {error ? <ErrorText text={error} /> : null}
 
-        <ModalActions
-          onClose={onClose}
-          submitLabel="저장"
-          submitDisabled={!preview}
-        />
+        <ModalActions onClose={onClose} submitLabel="저장" />
       </form>
     </ModalShell>
   );
@@ -1135,7 +1315,9 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
 
           <div className="space-y-3">
             {merchants.length === 0 ? (
-              <p className="text-sm text-zinc-500">등록된 구입처 프리셋이 없어요.</p>
+              <p className="text-sm text-zinc-500">
+                등록된 구입처 프리셋이 없어요.
+              </p>
             ) : (
               merchants.map((merchant) => {
                 const isEditing = editingMerchantId === merchant.id;
@@ -1204,9 +1386,14 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
           </div>
         </div>
 
-        <form onSubmit={handleAdd} className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
+        <form
+          onSubmit={handleAdd}
+          className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-4"
+        >
           <div>
-            <label className="mb-2 block text-sm text-zinc-300">새 구입처 이름</label>
+            <label className="mb-2 block text-sm text-zinc-300">
+              새 구입처 이름
+            </label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -1238,8 +1425,6 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
   );
 }
 
-
-
 function ModalShell({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/70">
@@ -1254,7 +1439,9 @@ function ModalShell({ title, children, onClose }) {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -1264,7 +1451,7 @@ function ModalActions({ onClose, submitLabel, submitDisabled = false }) {
   return (
     <div
       className="grid grid-cols-2 gap-3 pt-2"
-      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 50px)" }}
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)" }}
     >
       <button
         type="button"
