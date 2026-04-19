@@ -111,6 +111,7 @@ const typeLabels = {
   red: "레드",
   white: "화이트",
   champagne: "샴페인",
+  etc: "기타",
 };
 
 function normalizeWineKey(name, type) {
@@ -552,8 +553,8 @@ function WineListScreen({
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {["red", "white", "champagne"].map((type) => {
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            {["red", "white", "champagne", "etc"].map((type) => {
               const active = activeType === type;
               return (
                 <button
@@ -726,58 +727,59 @@ function WineDetailScreen({
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <InfoTile label="구입처" value={lot.merchant || "—"} />
-                      <InfoTile label="구입일" value={formatDate(lot.purchasedAt)} />
-                      <InfoTile label="실지불가" value={formatCurrency(lot.pricePaid)} />
-                      <InfoTile label="온누리" value={lot.onnuriUsed ? "적용" : "미적용"} />
+                    <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                      <InfoTileCompact label="구입처" value={lot.merchant || "—"} />
+                      <InfoTileCompact label="구입일" value={formatDate(lot.purchasedAt)} />
+                      <InfoTileCompact label="지불가" value={formatCurrency(lot.pricePaid)} />
                     </div>
 
-                    <div className="mt-3">
+                    <div className="mt-2">
                       <p className="text-xs text-zinc-500">메모</p>
                       <p className="mt-1 text-sm text-zinc-300">{lot.memo || "—"}</p>
                     </div>
-
+{/* 
                     {!canEditQty ? (
                       <p className="mt-3 text-xs text-zinc-500">
                         이미 마신 로트는 총 수량을 변경하거나 삭제할 수 없어요.
                       </p>
-                    ) : null}
+                    ) : null} */}
 
-                    <div className="mt-4 flex items-center justify-end gap-2 text-xs">
-                      <button
-                        onClick={() => onOpenLotEditModal(lot.id)}
-                        className="px-2 py-1 text-zinc-300 active:opacity-70"
-                      >
-                        수정
-                      </button>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          onClick={() => onOpenLotEditModal(lot.id)}
+                          className="px-2 py-1 text-zinc-300 active:opacity-70"
+                        >
+                          수정
+                        </button>
 
-                      <span className="text-zinc-600">|</span>
+                        <span className="text-zinc-600">|</span>
 
-                      <button
-                        onClick={() => onDeleteLot(lot.id)}
-                        disabled={!canDelete}
-                        className={`px-2 py-1 ${
-                          canDelete ? "text-rose-400 active:opacity-70" : "text-zinc-600"
-                        }`}
-                      >
-                        삭제
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => onDeleteLot(lot.id)}
+                          disabled={!canDelete}
+                          className={`px-2 py-1 ${
+                            canDelete ? "text-rose-400 active:opacity-70" : "text-zinc-600"
+                          }`}
+                        >
+                          삭제
+                        </button>
+                      </div>
 
-                    <div className="mt-4">
                       <button
                         onClick={() => onOpenLotDrinkModal(lot.id)}
                         disabled={!canDrink}
-                        className={`w-full rounded-2xl px-4 py-3 text-sm font-medium ${
+                        className={`rounded-full px-4 py-2 text-sm font-medium ${
                           canDrink
                             ? "bg-rose-500 text-white"
                             : "bg-zinc-800 text-zinc-500"
                         }`}
                       >
-                        🍷 이 로트 마심
+                        🍷 마심
                       </button>
                     </div>
+
+                    
                   </div>
                 );
               })
@@ -878,6 +880,8 @@ function WineModal({ onClose, onSubmit }) {
             <option value="red">레드</option>
             <option value="white">화이트</option>
             <option value="champagne">샴페인</option>
+            <option value="etc">기타</option>
+
           </select>
         </div>
 
@@ -1489,6 +1493,15 @@ function InfoTile({ label, value }) {
     <div className="rounded-2xl bg-zinc-800/60 p-3">
       <p className="text-xs text-zinc-500">{label}</p>
       <p className="mt-1 text-sm font-medium text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function InfoTileCompact({ label, value }) {
+  return (
+    <div className="rounded-2xl bg-zinc-800/50 px-3 py-2">
+      <p className="text-[11px] text-zinc-500">{label}</p>
+      <p className="mt-1 text-sm font-medium text-zinc-100 truncate">{value}</p>
     </div>
   );
 }
