@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "./supabase";
 import {
   safeId,
   calcPricePaid,
@@ -6,106 +7,6 @@ import {
   computeSummary,
 } from "./domain";
 
-const seedWines = [
-  { id: "wine_1", type: "red", name: "토브렉 우드커터스 쉬라" },
-  { id: "wine_2", type: "white", name: "토마 라빌 샤블리" },
-  { id: "wine_3", type: "champagne", name: "뽀므리 로얄 브뤼" },
-];
-
-const seedLots = [
-  {
-    id: "lot_1",
-    wineId: "wine_1",
-    vintage: 2018,
-    merchant: "코스트코",
-    purchasedAt: "2024-10-12",
-    qty: 2,
-    remaining: 1,
-    priceInput: 52000,
-    onnuriUsed: true,
-    discountRate: 0.9,
-    pricePaid: 46800,
-    memo: "온누리 적용",
-  },
-  {
-    id: "lot_2",
-    wineId: "wine_1",
-    vintage: 2016,
-    merchant: "동네 와인샵",
-    purchasedAt: "2025-01-25",
-    qty: 1,
-    remaining: 0,
-    priceInput: 61000,
-    onnuriUsed: false,
-    discountRate: 0.9,
-    pricePaid: 61000,
-    memo: "",
-  },
-  {
-    id: "lot_3",
-    wineId: "wine_2",
-    vintage: 2023,
-    merchant: "와인앤모어",
-    purchasedAt: "2025-02-03",
-    qty: 2,
-    remaining: 2,
-    priceInput: 31000,
-    onnuriUsed: false,
-    discountRate: 0.9,
-    pricePaid: 31000,
-    memo: "",
-  },
-  {
-    id: "lot_4",
-    wineId: "wine_3",
-    vintage: null,
-    merchant: "신세계백화점",
-    purchasedAt: "2024-12-20",
-    qty: 1,
-    remaining: 1,
-    priceInput: 89000,
-    onnuriUsed: true,
-    discountRate: 0.9,
-    pricePaid: 80100,
-    memo: "연말용",
-  },
-  {
-    id: "lot_5",
-    wineId: "wine_2",
-    vintage: 2022,
-    merchant: "코스트코",
-    purchasedAt: "2024-11-02",
-    qty: 1,
-    remaining: 0,
-    priceInput: 29000,
-    onnuriUsed: true,
-    discountRate: 0.9,
-    pricePaid: 26100,
-    memo: "이미 마심",
-  },
-];
-
-const seedDrinkLogs = [
-  {
-    id: "drink_1",
-    wineId: "wine_1",
-    drankAt: "2024-12-24T19:30",
-    place: "집",
-    pairing: "스테이크",
-    rating: 4,
-    repurchase: "yes",
-    memo: "밸런스 좋고 향이 깨끗함.",
-    lotId: "lot_1",
-    vintageSnapshot: 2018,
-  },
-];
-
-const seedMerchants = [
-  { id: "merchant_1", name: "코스트코" },
-  { id: "merchant_2", name: "동네 와인샵" },
-  { id: "merchant_3", name: "와인앤모어" },
-  { id: "merchant_4", name: "신세계백화점" },
-];
 
 const typeLabels = {
   red: "레드",
@@ -121,8 +22,8 @@ function normalizeWineKey(name, type) {
 }
 
 function formatCurrency(value) {
-  if (!value) return "—";
-  return `₩${Number(value).toLocaleString("ko-KR")}`;
+  if (value === null || value === undefined || value === "") return "—";
+  return `${Number(value).toLocaleString("ko-KR")}`;
 }
 
 function formatVintage(vintage) {
@@ -146,10 +47,11 @@ function formatDateTime(dateTimeString) {
 }
 
 function App() {
-  const [wines, setWines] = useState(seedWines);
-  const [lots, setLots] = useState(seedLots);
-  const [drinkLogs, setDrinkLogs] = useState(seedDrinkLogs);
-  const [merchants, setMerchants] = useState(seedMerchants);
+  const [wines, setWines] = useState([]);
+  const [lots, setLots] = useState([]);
+  const [drinkLogs, setDrinkLogs] = useState([]);
+  const [merchants, setMerchants] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [activeType, setActiveType] = useState("red");
   const [selectedWineId, setSelectedWineId] = useState(null);
@@ -157,6 +59,58 @@ function App() {
   const [modal, setModal] = useState(null);
   const [showAllWines, setShowAllWines] = useState(false);
   const [showAllLots, setShowAllLots] = useState(false);  
+
+  useEffect(() => {
+    async function loadAll() {
+      try {
+        setLoading(true);
+
+        const [winesRes, lotsRes, logsRes, merchantsRes] = await Promise.all([
+          supabase.from("wines").select("*").order("name"),
+          supabase.from("lots").select("*").order("purchased_at"),
+          supabase.from("drink_logs").select("*").order("drank_at", { ascending: false }),
+          supabase.from("merchants").select("*").order("name"),
+        ]);
+
+        if (winesRes.error) console.error("wines load error", winesRes.error);
+        if (lotsRes.error) console.error("lots load error", lotsRes.error);
+        if (logsRes.error) console.error("drink_logs load error", logsRes.error);
+        if (merchantsRes.error) console.error("merchants load error", merchantsRes.error);
+
+        setWines(winesRes.data ?? []);
+
+        setLots(
+          (lotsRes.data ?? []).map((lot) => ({
+            ...lot,
+            wineId: lot.wine_id,
+            purchasedAt: lot.purchased_at,
+            priceInput: lot.price_input,
+            onnuriUsed: lot.onnuri_used,
+            discountRate: Number(lot.discount_rate),
+            pricePaid: lot.price_paid,
+          }))
+        );
+
+        setDrinkLogs(
+          (logsRes.data ?? []).map((log) => ({
+            ...log,
+            wineId: log.wine_id,
+            lotId: log.lot_id,
+            vintageSnapshot: log.vintage_snapshot,
+            drankAt: log.drank_at,
+          }))
+        );
+
+        setMerchants(merchantsRes.data ?? []);
+      } catch (err) {
+        console.error("loadAll unexpected error", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadAll();
+  }, []);
 
   const selectedWine = useMemo(
     () => wines.find((wine) => wine.id === selectedWineId) || null,
@@ -174,6 +128,7 @@ function App() {
         const summary = computeSummary(lots, wine.id);
         return { ...wine, summary };
       })
+      .filter((wine) => !wine.hidden)
       .filter((wine) => wine.type === activeType)
       .filter((wine) => (showAllWines ? true : wine.summary.totalQty > 0))
       .sort((a, b) => {
@@ -209,6 +164,16 @@ function App() {
     return computeSummary(lots, selectedWineId);
   }, [lots, selectedWineId]);
 
+  const hiddenWines = useMemo(() => {
+    return wines
+      .filter((wine) => wine.hidden)
+      .map((wine) => ({
+        ...wine,
+        summary: computeSummary(lots, wine.id),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [wines, lots]);
+
   function openModal(name, lotId = null) {
     setSelectedLotId(lotId);
     setModal(name);
@@ -219,7 +184,7 @@ function App() {
     setSelectedLotId(null);
   }
 
-  function addWine(form) {
+  async function addWine(form) {
     const normalized = normalizeWineKey(form.name, form.type);
     const exists = wines.some(
       (wine) => normalizeWineKey(wine.name, wine.type) === normalized
@@ -233,21 +198,31 @@ function App() {
       };
     }
 
-    const newWine = {
+    const payload = {
       id: safeId("wine"),
       type: form.type,
       name: form.name.trim(),
     };
 
-    setWines((prev) => [...prev, newWine]);
-    setSelectedWineId(newWine.id);
-    setActiveType(newWine.type);
+    const { data, error } = await supabase
+      .from("wines")
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    setWines((prev) => [...prev, data]);
+    setSelectedWineId(data.id);
+    setActiveType(data.type);
     closeModal();
 
     return { ok: true, error: null };
   }
 
-  function addLot(form) {
+  async function addLot(form) {
     if (!selectedWineId) {
       return { ok: false, error: "선택된 와인이 없습니다." };
     }
@@ -258,28 +233,50 @@ function App() {
       form.vintage === "" || form.vintage === null ? null : Number(form.vintage);
     const pricePaid = calcPricePaid(priceInput, form.onnuriUsed);
 
-    const newLot = {
+    const payload = {
       id: safeId("lot"),
-      wineId: selectedWineId,
+      wine_id: selectedWineId,
       vintage,
       merchant: form.merchant,
-      purchasedAt: form.purchasedAt,
+      purchased_at: form.purchasedAt,
       qty,
       remaining: qty,
-      priceInput,
-      onnuriUsed: form.onnuriUsed,
-      discountRate: 0.9,
-      pricePaid,
+      price_input: priceInput,
+      onnuri_used: form.onnuriUsed,
+      discount_rate: 0.9,
+      price_paid: pricePaid,
       memo: form.memo.trim(),
     };
 
-    setLots((prev) => [...prev, newLot]);
+    const { data, error } = await supabase
+      .from("lots")
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    setLots((prev) => [
+      ...prev,
+      {
+        ...data,
+        wineId: data.wine_id,
+        purchasedAt: data.purchased_at,
+        priceInput: data.price_input,
+        onnuriUsed: data.onnuri_used,
+        discountRate: Number(data.discount_rate),
+        pricePaid: data.price_paid,
+      },
+    ]);
+
     closeModal();
 
     return { ok: true, error: null };
   }
 
-  function updateLot(lotId, form) {
+  async function updateLot(lotId, form) {
     const targetLot = lots.find((lot) => lot.id === lotId);
 
     if (!targetLot) {
@@ -313,24 +310,44 @@ function App() {
 
     const pricePaid = calcPricePaid(priceInput, form.onnuriUsed);
 
-    setLots((prev) =>
-      prev.map((lot) => {
-        if (lot.id !== lotId) return lot;
+    const updatePayload = {
+      merchant: form.merchant.trim(),
+      purchased_at: form.purchasedAt,
+      vintage,
+      qty: canEditQty ? nextQty : targetLot.qty,
+      remaining: canEditQty ? nextQty : targetLot.remaining,
+      price_input: priceInput,
+      onnuri_used: form.onnuriUsed,
+      discount_rate: 0.9,
+      price_paid: pricePaid,
+      memo: form.memo.trim(),
+    };
 
-        return {
-          ...lot,
-          merchant: form.merchant.trim(),
-          purchasedAt: form.purchasedAt,
-          vintage,
-          qty: canEditQty ? nextQty : lot.qty,
-          remaining: canEditQty ? nextQty : lot.remaining,
-          priceInput,
-          onnuriUsed: form.onnuriUsed,
-          discountRate: 0.9,
-          pricePaid,
-          memo: form.memo.trim(),
-        };
-      })
+    const { data, error } = await supabase
+      .from("lots")
+      .update(updatePayload)
+      .eq("id", lotId)
+      .select()
+      .single();
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    setLots((prev) =>
+      prev.map((lot) =>
+        lot.id === lotId
+          ? {
+              ...data,
+              wineId: data.wine_id,
+              purchasedAt: data.purchased_at,
+              priceInput: data.price_input,
+              onnuriUsed: data.onnuri_used,
+              discountRate: Number(data.discount_rate),
+              pricePaid: data.price_paid,
+            }
+          : lot
+      )
     );
 
     closeModal();
@@ -338,7 +355,7 @@ function App() {
     return { ok: true, error: null };
   }
 
-  function deleteLot(lotId) {
+  async function deleteLot(lotId) {
     const targetLot = lots.find((lot) => lot.id === lotId);
 
     if (!targetLot) {
@@ -359,11 +376,20 @@ function App() {
       return { ok: false, error: "삭제가 취소되었습니다." };
     }
 
+    const { error } = await supabase
+      .from("lots")
+      .delete()
+      .eq("id", lotId);
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
     setLots((prev) => prev.filter((lot) => lot.id !== lotId));
     return { ok: true, error: null };
   }
 
-  function drinkOneBottleFromLot(lotId, form) {
+  async function drinkOneBottleFromLot(lotId, form) {
     const targetLot = lots.find((lot) => lot.id === lotId);
 
     if (!targetLot) {
@@ -374,34 +400,138 @@ function App() {
       return { ok: false, error: "남은 재고가 없어 처리할 수 없어요." };
     }
 
-    const newLog = {
+    const nextRemaining = Math.max(0, targetLot.remaining - 1);
+
+    const { error: updateError } = await supabase
+      .from("lots")
+      .update({ remaining: nextRemaining })
+      .eq("id", lotId);
+
+    if (updateError) {
+      return { ok: false, error: updateError.message };
+    }
+
+    const logPayload = {
       id: safeId("drink"),
-      wineId: targetLot.wineId,
-      drankAt: form.drankAt,
+      wine_id: targetLot.wineId,
+      lot_id: targetLot.id,
+      vintage_snapshot: targetLot.vintage ?? null,
+      drank_at: form.drankAt,
       place: form.place.trim(),
       pairing: form.pairing.trim(),
       rating: Number(form.rating),
       repurchase: form.repurchase,
       memo: form.memo.trim(),
-      lotId: targetLot.id,
-      vintageSnapshot: targetLot.vintage ?? null,
     };
+
+    const { data, error: insertError } = await supabase
+      .from("drink_logs")
+      .insert(logPayload)
+      .select()
+      .single();
+
+    if (insertError) {
+      await supabase
+        .from("lots")
+        .update({ remaining: targetLot.remaining })
+        .eq("id", lotId);
+
+      return { ok: false, error: insertError.message };
+    }
 
     setLots((prev) =>
       prev.map((lot) =>
-        lot.id === lotId
-          ? { ...lot, remaining: Math.max(0, lot.remaining - 1) }
-          : lot
+        lot.id === lotId ? { ...lot, remaining: nextRemaining } : lot
       )
     );
-    setDrinkLogs((prev) => [newLog, ...prev]);
+
+    setDrinkLogs((prev) => [
+      {
+        ...data,
+        wineId: data.wine_id,
+        lotId: data.lot_id,
+        vintageSnapshot: data.vintage_snapshot,
+        drankAt: data.drank_at,
+      },
+      ...prev,
+    ]);
 
     closeModal();
 
     return { ok: true, error: null };
   }
 
-  function addMerchant(form) {
+  async function updateWineName(wineId, form) {
+    const name = form.name.trim();
+
+    if (!name) {
+      return { ok: false, error: "와인 이름을 입력해주세요." };
+    }
+
+    const targetWine = wines.find((wine) => wine.id === wineId);
+
+    if (!targetWine) {
+      return { ok: false, error: "수정할 와인을 찾을 수 없습니다." };
+    }
+
+    const normalized = normalizeWineKey(name, targetWine.type);
+    const exists = wines.some(
+      (wine) =>
+        wine.id !== wineId &&
+        normalizeWineKey(wine.name, wine.type) === normalized
+    );
+
+    if (exists) {
+      return { ok: false, error: "같은 타입에 동일한 이름의 와인이 이미 있습니다." };
+    }
+
+    const { data, error } = await supabase
+      .from("wines")
+      .update({ name })
+      .eq("id", wineId)
+      .select()
+      .single();
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    setWines((prev) =>
+      prev.map((wine) => (wine.id === wineId ? data : wine))
+    );
+
+    closeModal();
+
+    return { ok: true, error: null };
+  }
+
+  async function setWineHidden(wineId, hidden) {
+    const { data, error } = await supabase
+      .from("wines")
+      .update({ hidden })
+      .eq("id", wineId)
+      .select()
+      .single();
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    setWines((prev) =>
+      prev.map((wine) => (wine.id === wineId ? data : wine))
+    );
+
+    if (hidden && selectedWineId === wineId) {
+      setSelectedWineId(null);
+    }
+
+    closeModal();
+
+    return { ok: true, error: null };
+  }
+
+
+  async function addMerchant(form) {
     const name = form.name.trim();
     const exists = merchants.some(
       (merchant) => merchant.name.trim().toLowerCase() === name.toLowerCase()
@@ -411,16 +541,26 @@ function App() {
       return { ok: false, error: "이미 등록된 구입처입니다." };
     }
 
-    const newMerchant = {
+    const payload = {
       id: safeId("merchant"),
       name,
     };
 
-    setMerchants((prev) => [...prev, newMerchant]);
+    const { data, error } = await supabase
+      .from("merchants")
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    setMerchants((prev) => [...prev, data]);
     return { ok: true, error: null };
   }
 
-  function updateMerchant(id, form) {
+  async function updateMerchant(id, form) {
     const name = form.name.trim();
 
     if (!name) {
@@ -437,18 +577,44 @@ function App() {
       return { ok: false, error: "이미 등록된 구입처입니다." };
     }
 
+    const { data, error } = await supabase
+      .from("merchants")
+      .update({ name })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
     setMerchants((prev) =>
-      prev.map((merchant) =>
-        merchant.id === id ? { ...merchant, name } : merchant
-      )
+      prev.map((merchant) => (merchant.id === id ? data : merchant))
     );
 
     return { ok: true, error: null };
   }
 
-  function deleteMerchant(id) {
+  async function deleteMerchant(id) {
+    const { error } = await supabase
+      .from("merchants")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
     setMerchants((prev) => prev.filter((merchant) => merchant.id !== id));
     return { ok: true, error: null };
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
+        불러오는 중...
+      </div>
+    );
   }
 
   return (
@@ -465,7 +631,7 @@ function App() {
 
             onSelectWine={setSelectedWineId}
             onOpenWineModal={() => openModal("wine")}
-            onOpenMerchantModal={() => openModal("merchant")}
+            onOpenManageMenu={() => openModal("manageMenu")}
           />
         ) : (
           <WineDetailScreen
@@ -483,6 +649,8 @@ function App() {
             onOpenLotEditModal={(lotId) => openModal("lotEdit", lotId)}
             onOpenLotDrinkModal={(lotId) => openModal("lotDrink", lotId)}
             onDeleteLot={deleteLot}
+            onOpenWineManageModal={() => openModal("wineManage")}
+
           />
         )}
 
@@ -529,6 +697,33 @@ function App() {
             onDelete={deleteMerchant}
           />
         )}
+
+        {modal === "manageMenu" && (
+          <ManageMenuModal
+            onClose={closeModal}
+            onOpenMerchant={() => openModal("merchant")}
+            onOpenHiddenWines={() => openModal("hiddenWines")}
+          />
+        )}
+
+        {modal === "hiddenWines" && (
+          <HiddenWinesModal
+            wines={hiddenWines}
+            onClose={closeModal}
+            onUnhideWine={(wineId) => setWineHidden(wineId, false)}
+          />
+        )}
+
+        {modal === "wineManage" && selectedWine && (
+          <WineManageModal
+            wine={selectedWine}
+            onClose={closeModal}
+            onRename={(form) => updateWineName(selectedWine.id, form)}
+            onHide={() => setWineHidden(selectedWine.id, true)}
+          />
+        )}
+
+
       </div>
     </div>
   );
@@ -542,7 +737,7 @@ function WineListScreen({
   onToggleShowAllWines,
   onSelectWine,
   onOpenWineModal,
-  onOpenMerchantModal,
+  onOpenManageMenu,
 }) {
   return (
     <div className="pb-24">
@@ -557,9 +752,9 @@ function WineListScreen({
             </div>
             <div className="flex gap-2">
               <button
-                onClick={onOpenMerchantModal}
-                title="구입처 프리셋 관리"
-                aria-label="구입처 프리셋 관리"
+                onClick={onOpenManageMenu}
+                title="관리 메뉴"
+                aria-label="관리 메뉴"
                 className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 text-lg text-zinc-100 active:opacity-80"
               >
                 <svg
@@ -651,22 +846,22 @@ function WineListScreen({
               <button
                 key={wine.id}
                 onClick={() => onSelectWine(wine.id)}
-                className={`w-full rounded-3xl border p-4 text-left shadow-sm transition ${
+                className={`w-full rounded-3xl border px-4 py-3 text-left shadow-sm transition ${
                   isOutOfStock
                     ? "border-zinc-800 bg-zinc-900/60 text-zinc-300"
                     : "border-zinc-800 bg-zinc-900"
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-lg font-semibold leading-tight">
+                    <p className="text-sm font-semibold leading-tight">
                       {wine.name}
                     </p>
                     
                   </div>
 
                   <div
-                    className={`rounded-full px-3 py-1 text-sm ${
+                    className={`rounded-full px-3 py-1 text-xs ${
                       isOutOfStock
                         ? "bg-zinc-800 text-zinc-400"
                         : "bg-zinc-800 text-zinc-300"
@@ -698,6 +893,7 @@ function WineDetailScreen({
   onOpenLotEditModal,
   onOpenLotDrinkModal,
   onDeleteLot,
+  onOpenWineManageModal,
 }) {
   return (
     <div className="pb-24">
@@ -720,13 +916,50 @@ function WineDetailScreen({
                 {wine.name}
               </h1>
 
-              <button
-                onClick={onOpenLotModal}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-xl font-semibold text-white active:opacity-80"
-                title="구입 추가"
-              >
-                +
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onOpenWineManageModal}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 text-zinc-100 active:opacity-80"
+                  title="와인 관리"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    className="h-5 w-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M19.4 15a1.7 1.7 0 0 0 .34 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.34 1.7 1.7 0 0 0-1 1.54V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.54 1.7 1.7 0 0 0-1.82.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.54-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.82l-.06-.06A2 2 0 0 1 7.03 4.3l.06.06A1.7 1.7 0 0 0 9 4.02 1.7 1.7 0 0 0 10 2.48V2a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.54 1.7 1.7 0 0 0 1.82-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.46.18.98.27 1.54.27H21a2 2 0 0 1 0 4h-.09c-.56 0-1.08.09-1.54.27Z"
+                    />
+                  </svg>
+                </button>
+
+                <button
+                  onClick={onOpenLotModal}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-xl font-semibold text-white active:opacity-80"
+                  title="구입 추가"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="h-5 w-5"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <p className="mt-2 text-sm text-zinc-400">
@@ -923,7 +1156,7 @@ function WineModal({ onClose, onSubmit }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
-  function handleSave(event) {
+  async function handleSave(event) {
     event.preventDefault();
 
     if (!name.trim()) {
@@ -931,7 +1164,7 @@ function WineModal({ onClose, onSubmit }) {
       return;
     }
 
-    const result = onSubmit({ type, name });
+    const result = await onSubmit({ type, name });
     if (!result.ok) {
       setError(result.error);
     }
@@ -1004,7 +1237,7 @@ function LotModal({
   const canEditQty = initialLot ? initialLot.qty === initialLot.remaining : true;
   const pricePreview = calcPricePaid(priceInput, onnuriUsed);
 
-  function handleSave(event) {
+  async function handleSave(event) {
     event.preventDefault();
 
     if (!merchant.trim()) {
@@ -1030,7 +1263,7 @@ function LotModal({
       }
     }
 
-    const result = onSubmit({
+    const result = await onSubmit({
       merchant: merchant.trim(),
       purchasedAt,
       vintage,
@@ -1121,11 +1354,14 @@ function LotModal({
           <div>
             <label className="mb-2 block text-sm text-zinc-300">가격(병당)</label>
             <input
-              type="number"
-              min="0"
-              step="1"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={priceInput}
-              onChange={(e) => setPriceInput(e.target.value)}
+              onChange={(e) => {
+                const onlyNumbers = e.target.value.replace(/[^0-9]/g, "");
+                setPriceInput(onlyNumbers);
+              }}
               placeholder="예: 52000"
               className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
             />
@@ -1181,7 +1417,7 @@ function DrinkModal({ wine, lot, onClose, onSubmit }) {
   const [memo, setMemo] = useState("");
   const [error, setError] = useState("");
 
-  function handleSave(event) {
+  async function handleSave(event) {
     event.preventDefault();
 
     if (!drankAt) {
@@ -1205,7 +1441,7 @@ function DrinkModal({ wine, lot, onClose, onSubmit }) {
       return;
     }
 
-    const result = onSubmit({
+    const result = await onSubmit({
       drankAt,
       place,
       pairing,
@@ -1287,9 +1523,9 @@ function DrinkModal({ wine, lot, onClose, onSubmit }) {
             className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
           >
             <option value="">선택</option>
-            <option value="yes">yes</option>
-            <option value="no">no</option>
-            <option value="unknown">unknown</option>
+            <option value="yes">예</option>
+            <option value="no">아니오</option>
+            <option value="unknown">잘 모르겠다</option>
           </select>
         </div>
 
@@ -1319,7 +1555,7 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
   const [editingName, setEditingName] = useState("");
   const [editingError, setEditingError] = useState("");
 
-  function handleAdd(event) {
+  async function handleAdd(event) {
     event.preventDefault();
 
     if (!name.trim()) {
@@ -1327,7 +1563,7 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
       return;
     }
 
-    const result = onAdd({ name });
+    const result = await onAdd({ name });
     if (!result.ok) {
       setError(result.error);
       return;
@@ -1349,12 +1585,12 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
     setEditingError("");
   }
 
-  function handleUpdate(event) {
+  async function handleUpdate(event) {
     event.preventDefault();
 
     if (!editingMerchantId) return;
 
-    const result = onUpdate(editingMerchantId, { name: editingName });
+    const result = await onUpdate(editingMerchantId, { name: editingName });
 
     if (!result.ok) {
       setEditingError(result.error);
@@ -1364,14 +1600,19 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
     cancelEdit();
   }
 
-  function handleDelete(merchant) {
+  async function handleDelete(merchant) {
     const confirmed = window.confirm(
       `'${merchant.name}' 프리셋을 삭제할까요?\n기존 구입 로트 기록에는 영향이 없습니다.`
     );
 
     if (!confirmed) return;
 
-    onDelete(merchant.id);
+    const result = await onDelete(merchant.id);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
 
     if (editingMerchantId === merchant.id) {
       cancelEdit();
@@ -1498,6 +1739,156 @@ function MerchantModal({ merchants, onClose, onAdd, onUpdate, onDelete }) {
     </ModalShell>
   );
 }
+
+function ManageMenuModal({ onClose, onOpenMerchant, onOpenHiddenWines }) {
+  return (
+    <ModalShell title="관리 메뉴" onClose={onClose}>
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={onOpenMerchant}
+          className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4 text-left"
+        >
+          <p className="text-sm font-medium text-zinc-100">구입처 프리셋 관리</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            로트 입력에 사용하는 구입처 목록을 관리해요.
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenHiddenWines}
+          className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4 text-left"
+        >
+          <p className="text-sm font-medium text-zinc-100">숨김 와인 관리</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            목록에서 숨긴 와인을 보고 다시 복구할 수 있어요.
+          </p>
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function WineManageModal({ wine, onClose, onRename, onHide }) {
+  const [name, setName] = useState(wine.name);
+  const [error, setError] = useState("");
+
+  async function handleSave(event) {
+    event.preventDefault();
+
+    if (!name.trim()) {
+      setError("와인 이름을 입력해주세요.");
+      return;
+    }
+
+    const result = await onRename({ name });
+
+    if (!result.ok) {
+      setError(result.error);
+    }
+  }
+
+  async function handleHide() {
+    const confirmed = window.confirm(
+      `'${wine.name}' 와인을 목록에서 숨길까요?\n숨김 처리하면 메인 화면의 전체 보기/남은 것만 어디에도 나타나지 않습니다.`
+    );
+
+    if (!confirmed) return;
+
+    const result = await onHide();
+
+    if (!result.ok) {
+      setError(result.error);
+    }
+  }
+
+  return (
+    <ModalShell title="와인 관리" onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-5">
+        <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
+          <p className="mb-3 text-sm font-medium">이름 수정</p>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-base"
+          />
+        </div>
+
+        <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
+          <p className="mb-2 text-sm font-medium">숨김 처리</p>
+          <p className="text-xs text-zinc-500">
+            숨김 처리한 와인은 메인 화면의 일반 목록에서 보이지 않아요.
+          </p>
+
+          <button
+            type="button"
+            onClick={handleHide}
+            className="mt-4 w-full rounded-2xl border border-amber-900 bg-amber-950/40 px-4 py-3 text-sm font-medium text-amber-200"
+          >
+            이 와인 숨기기
+          </button>
+        </div>
+
+        {error ? <ErrorText text={error} /> : null}
+
+        <ModalActions onClose={onClose} submitLabel="이름 저장" />
+      </form>
+    </ModalShell>
+  );
+}
+
+function HiddenWinesModal({ wines, onClose, onUnhideWine }) {
+  const [error, setError] = useState("");
+
+  async function handleUnhide(wineId) {
+    const result = await onUnhideWine(wineId);
+
+    if (!result.ok) {
+      setError(result.error);
+    }
+  }
+
+  return (
+    <ModalShell title="숨김 와인 관리" onClose={onClose}>
+      <div className="space-y-4">
+        {error ? <ErrorText text={error} /> : null}
+
+        {wines.length === 0 ? (
+          <EmptyState
+            title="숨김 처리된 와인이 없어요."
+            description="숨긴 와인이 있으면 여기서 다시 복구할 수 있어요."
+          />
+        ) : (
+          wines.map((wine) => (
+            <div
+              key={wine.id}
+              className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-zinc-100">{wine.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {typeLabels[wine.type]} · 남은 수량 {wine.summary.totalQty}병
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleUnhide(wine.id)}
+                  className="shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-100"
+                >
+                  숨김 해제
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
 
 function ModalShell({ title, children, onClose }) {
   return (
