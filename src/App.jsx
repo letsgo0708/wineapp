@@ -46,6 +46,16 @@ function formatDateTime(dateTimeString) {
   return dateTimeString.replace("T", " ");
 }
 
+function formatDateMMDD(dateString) {
+  if (!dateString) return "—";
+
+  const normalized = String(dateString).slice(0, 10);
+  const [, month, day] = normalized.split("-");
+
+  if (!month || !day) return "—";
+  return `${month}.${day}`;
+}
+
 function App() {
   const [wines, setWines] = useState([]);
   const [lots, setLots] = useState([]);
@@ -60,6 +70,7 @@ function App() {
   const [showAllWines, setShowAllWines] = useState(false);
   const [showAllLots, setShowAllLots] = useState(false);  
   const [isSortMode, setIsSortMode] = useState(false);
+  const [showDrinkHistoryScreen, setShowDrinkHistoryScreen] = useState(false);
 
   useEffect(() => {
     async function loadAll() {
@@ -182,6 +193,20 @@ function App() {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [wines, lots]);
+
+  const allDrinkHistory = useMemo(() => {
+    return drinkLogs
+      .map((log) => {
+        const wine = wines.find((item) => item.id === log.wineId);
+
+        return {
+          ...log,
+          wineName: wine?.name || "알 수 없는 와인",
+          wineType: wine?.type || "etc",
+        };
+      })
+      .sort((a, b) => String(b.drankAt).localeCompare(String(a.drankAt)));
+  }, [drinkLogs, wines]);
 
   function openModal(name, lotId = null) {
     setSelectedLotId(lotId);
@@ -701,15 +726,18 @@ function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto min-h-screen max-w-md bg-zinc-950">
-        {!selectedWine ? (
+        {showDrinkHistoryScreen ? (
+          <DrinkHistoryScreen
+            logs={allDrinkHistory}
+            onBack={() => setShowDrinkHistoryScreen(false)}
+          />
+        ) : !selectedWine ? (
           <WineListScreen
             activeType={activeType}
             setActiveType={setActiveType}
             wines={visibleWines}
-
             showAllWines={showAllWines}
             onToggleShowAllWines={() => setShowAllWines((prev) => !prev)}
-
             onSelectWine={setSelectedWineId}
             onOpenWineModal={() => openModal("wine")}
             onOpenManageMenu={() => openModal("manageMenu")}
@@ -717,6 +745,7 @@ function App() {
             onToggleSortMode={() => setIsSortMode((prev) => !prev)}
             onMoveWineUp={moveWineUp}
             onMoveWineDown={moveWineDown}
+            onOpenDrinkHistory={() => setShowDrinkHistoryScreen(true)}
           />
         ) : (
           <WineDetailScreen
@@ -725,17 +754,14 @@ function App() {
             allLots={wineLots(lots, selectedWineId)}
             drinkLogs={selectedWineDrinkLogs}
             summary={selectedSummary}
-
             showAllLots={showAllLots}
             onToggleShowAllLots={() => setShowAllLots((prev) => !prev)}
-
             onBack={() => setSelectedWineId(null)}
             onOpenLotModal={() => openModal("lot")}
             onOpenLotEditModal={(lotId) => openModal("lotEdit", lotId)}
             onOpenLotDrinkModal={(lotId) => openModal("lotDrink", lotId)}
             onDeleteLot={deleteLot}
             onOpenWineManageModal={() => openModal("wineManage")}
-
           />
         )}
 
@@ -827,6 +853,7 @@ function WineListScreen({
   onToggleSortMode,
   onMoveWineUp,
   onMoveWineDown,
+  onOpenDrinkHistory,
 }) {
   return (
     <div className="pb-24">
@@ -1037,6 +1064,15 @@ function WineListScreen({
 
 
         )}
+
+        <button
+          type="button"
+          onClick={onOpenDrinkHistory}
+          className="w-full py-3 text-sm font-medium text-zinc-200 text-center active:opacity-80 active:scale-[0.98]"
+        >
+          마신 기록 보기 →
+        </button>
+
       </main>
     </div>
   );
@@ -1308,6 +1344,61 @@ function WineDetailScreen({
             )}
           </div>
         </section>
+      </main>
+    </div>
+  );
+}
+
+function DrinkHistoryScreen({ logs, onBack }) {
+  return (
+    <div className="pb-24">
+      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
+        <div className="px-4 pb-4 pt-5">
+          <button
+            onClick={onBack}
+            className="mb-4 rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-100"
+          >
+            ← 뒤로가기
+          </button>
+
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+              Wine Inventory
+            </p>
+            <h1 className="mt-1 text-xl font-semibold">마신 기록 모아보기</h1>
+            <p className="mt-2 text-sm text-zinc-400">최신순</p>
+          </div>
+        </div>
+      </header>
+
+      <main className="space-y-3 px-4 pt-4">
+        {logs.length === 0 ? (
+          <EmptyState
+            title="아직 마신 기록이 없어요."
+            description="와인을 마신 뒤 기록하면 여기에 전체 목록으로 쌓여요."
+          />
+        ) : (
+          logs.map((log) => (
+            <div
+              key={log.id}
+              className="rounded-3xl border border-zinc-800 bg-zinc-900 px-4 py-3"
+            >
+              <div className="flex items-center gap-3">
+                <span className="shrink-0 text-sm font-medium text-zinc-300">
+                  {formatDateMMDD(log.drankAt)}
+                </span>
+
+                <span className="shrink-0 text-xs text-zinc-500">
+                  {typeLabels[log.wineType] || "기타"}
+                </span>
+
+                <span className="min-w-0 truncate text-sm font-semibold text-zinc-100">
+                  {log.wineName}
+                </span>
+              </div>
+            </div>
+          ))
+        )}
       </main>
     </div>
   );
