@@ -59,6 +59,7 @@ function App() {
   const [modal, setModal] = useState(null);
   const [showAllWines, setShowAllWines] = useState(false);
   const [showAllLots, setShowAllLots] = useState(false);  
+  const [isSortMode, setIsSortMode] = useState(false);
 
   useEffect(() => {
     async function loadAll() {
@@ -130,14 +131,22 @@ function App() {
       })
       .filter((wine) => !wine.hidden)
       .filter((wine) => wine.type === activeType)
-      .filter((wine) => (showAllWines ? true : wine.summary.totalQty > 0))
+      .filter((wine) => (isSortMode ? true : showAllWines ? true : wine.summary.totalQty > 0))
       .sort((a, b) => {
+        const aOrder = typeof a.sort_order === "number" ? a.sort_order : Number.MAX_SAFE_INTEGER;
+        const bOrder = typeof b.sort_order === "number" ? b.sort_order : Number.MAX_SAFE_INTEGER;
+
+        if (aOrder !== bOrder) {
+          return aOrder - bOrder;
+        }
+
         if (a.summary.avgCost !== b.summary.avgCost) {
           return a.summary.avgCost - b.summary.avgCost;
         }
+
         return a.name.localeCompare(b.name);
       });
-  }, [wines, lots, activeType, showAllWines]);
+  }, [wines, lots, activeType, showAllWines, isSortMode]);
 
   const selectedWineLots = useMemo(() => {
     if (!selectedWineId) return [];
@@ -198,10 +207,17 @@ function App() {
       };
     }
 
+    const maxSortOrder = wines.reduce((max, wine) => {
+      return typeof wine.sort_order === "number" && wine.sort_order > max
+        ? wine.sort_order
+        : max;
+    }, 0);
+
     const payload = {
       id: safeId("wine"),
       type: form.type,
       name: form.name.trim(),
+      sort_order: maxSortOrder + 1,
     };
 
     const { data, error } = await supabase
@@ -530,6 +546,71 @@ function App() {
     return { ok: true, error: null };
   }
 
+  async function swapWineSortOrder(firstWine, secondWine) {
+    const firstOrder =
+      typeof firstWine.sort_order === "number" ? firstWine.sort_order : 0;
+    const secondOrder =
+      typeof secondWine.sort_order === "number" ? secondWine.sort_order : 0;
+
+    const { error: error1 } = await supabase
+      .from("wines")
+      .update({ sort_order: secondOrder })
+      .eq("id", firstWine.id);
+
+    if (error1) {
+      return { ok: false, error: error1.message };
+    }
+
+    const { error: error2 } = await supabase
+      .from("wines")
+      .update({ sort_order: firstOrder })
+      .eq("id", secondWine.id);
+
+    if (error2) {
+      return { ok: false, error: error2.message };
+    }
+
+    setWines((prev) =>
+      prev.map((wine) => {
+        if (wine.id === firstWine.id) {
+          return { ...wine, sort_order: secondOrder };
+        }
+        if (wine.id === secondWine.id) {
+          return { ...wine, sort_order: firstOrder };
+        }
+        return wine;
+      })
+    );
+
+    return { ok: true, error: null };
+  }
+
+
+  async function moveWineUp(wineId) {
+    const currentIndex = visibleWines.findIndex((wine) => wine.id === wineId);
+
+    if (currentIndex <= 0) {
+      return { ok: false, error: "이미 맨 위입니다." };
+    }
+
+    const currentWine = visibleWines[currentIndex];
+    const prevWine = visibleWines[currentIndex - 1];
+
+    return await swapWineSortOrder(currentWine, prevWine);
+  }
+
+  async function moveWineDown(wineId) {
+    const currentIndex = visibleWines.findIndex((wine) => wine.id === wineId);
+
+    if (currentIndex === -1 || currentIndex >= visibleWines.length - 1) {
+      return { ok: false, error: "이미 맨 아래입니다." };
+    }
+
+    const currentWine = visibleWines[currentIndex];
+    const nextWine = visibleWines[currentIndex + 1];
+
+    return await swapWineSortOrder(currentWine, nextWine);
+  }
 
   async function addMerchant(form) {
     const name = form.name.trim();
@@ -632,6 +713,10 @@ function App() {
             onSelectWine={setSelectedWineId}
             onOpenWineModal={() => openModal("wine")}
             onOpenManageMenu={() => openModal("manageMenu")}
+            isSortMode={isSortMode}
+            onToggleSortMode={() => setIsSortMode((prev) => !prev)}
+            onMoveWineUp={moveWineUp}
+            onMoveWineDown={moveWineDown}
           />
         ) : (
           <WineDetailScreen
@@ -738,6 +823,10 @@ function WineListScreen({
   onSelectWine,
   onOpenWineModal,
   onOpenManageMenu,
+  isSortMode,
+  onToggleSortMode,
+  onMoveWineUp,
+  onMoveWineDown,
 }) {
   return (
     <div className="pb-24">
@@ -822,58 +911,131 @@ function WineListScreen({
 
       <main className="space-y-3 px-4 pt-4">
         {/* 🔥 여기 추가 */}
-        <div className="flex items-center justify-between">
+        
+        <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-zinc-500">
             와인 {wines.length}종
           </span>
-          <button
-            onClick={onToggleShowAllWines}
-            className="rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 active:opacity-80"
-          >
-            {showAllWines ? "남은 것만" : "전체 보기"}
-          </button>
+
+          <div className="flex items-center gap-2">
+            {isSortMode ? (
+              <p className="text-xs text-zinc-500">
+                순서 편집 중에는 모든 와인이 표시됩니다
+              </p>
+            ) : null}
+            
+            <button
+              onClick={onToggleSortMode}
+              className={`rounded-xl border px-3 py-2 text-xs active:opacity-80 ${
+                isSortMode
+                  ? "border-emerald-600 bg-emerald-500 text-white"
+                  : "border-zinc-700 text-zinc-300"
+              }`}
+            >
+              {isSortMode ? "완료" : "순서 편집"}
+            </button>
+
+            {!isSortMode ? (
+              <button
+                onClick={onToggleShowAllWines}
+                disabled={isSortMode}
+                className={`rounded-xl border px-3 py-2 text-xs ${
+                  isSortMode
+                    ? "border-zinc-800 text-zinc-600"
+                    : "border-zinc-700 text-zinc-300 active:opacity-80"
+                }`}
+              >
+                {showAllWines ? "남은 것만" : "전체 보기"}
+              </button>
+            ) : null}
+          </div>
         </div>
+
+
         {wines.length === 0 ? (
           <EmptyState
             title="이 타입의 와인이 없어요."
             description="새 와인을 추가해 재고 관리를 시작해보세요."
           />
         ) : (
-          wines.map((wine) => {
+          
+          wines.map((wine, index) => {
             const isOutOfStock = wine.summary.totalQty === 0;
+            const isFirst = index === 0;
+            const isLast = index === wines.length - 1;
 
             return (
-              <button
+              <div
                 key={wine.id}
-                onClick={() => onSelectWine(wine.id)}
-                className={`w-full rounded-3xl border px-4 py-3 text-left shadow-sm transition ${
+                className={`rounded-3xl border px-4 py-3 shadow-sm transition ${
                   isOutOfStock
                     ? "border-zinc-800 bg-zinc-900/60 text-zinc-300"
                     : "border-zinc-800 bg-zinc-900"
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold leading-tight">
-                      {wine.name}
-                    </p>
-                    
-                  </div>
-
-                  <div
-                    className={`rounded-full px-3 py-1 text-xs ${
-                      isOutOfStock
-                        ? "bg-zinc-800 text-zinc-400"
-                        : "bg-zinc-800 text-zinc-300"
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isSortMode) {
+                        onSelectWine(wine.id);
+                      }
+                    }}
+                    className="min-w-0 flex-1 text-left"
                   >
-                    {isOutOfStock ? "재고 없음" : `${wine.summary.totalQty}병`}
-                  </div>
-                </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-tight">
+                          {wine.name}
+                        </p>
+                      </div>
 
-              </button>
+                      <div
+                        className={`rounded-full px-3 py-1 text-xs ${
+                          isOutOfStock
+                            ? "bg-zinc-800 text-zinc-400"
+                            : "bg-zinc-800 text-zinc-300"
+                        }`}
+                      >
+                        {isOutOfStock ? "재고 없음" : `${wine.summary.totalQty}병`}
+                      </div>
+                    </div>
+                  </button>
+
+                  {isSortMode ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isFirst}
+                        onClick={() => onMoveWineUp(wine.id)}
+                        className={`rounded-xl border px-3 py-2 text-xs ${
+                          isFirst
+                            ? "border-zinc-800 text-zinc-600"
+                            : "border-zinc-700 text-zinc-100 active:opacity-80"
+                        }`}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLast}
+                        onClick={() => onMoveWineDown(wine.id)}
+                        className={`rounded-xl border px-3 py-2 text-xs ${
+                          isLast
+                            ? "border-zinc-800 text-zinc-600"
+                            : "border-zinc-700 text-zinc-100 active:opacity-80"
+                        }`}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             );
           })
+
+
         )}
       </main>
     </div>
@@ -1110,14 +1272,14 @@ function WineDetailScreen({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs text-zinc-500">빈티지 snapshot</p>
+                      <p className="text-xs text-zinc-500">빈티지</p>
                       <p className="mt-1 font-medium">
                         {formatVintage(log.vintageSnapshot)}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-zinc-500">마신 시각</p>
-                      <p className="mt-1 text-sm">{formatDateTime(log.drankAt)}</p>
+                      <p className="mt-1 text-sm">{formatDateTime(log.drankAt.slice(0, 10))}</p>
                     </div>
                   </div>
 
@@ -1472,7 +1634,7 @@ function DrinkModal({ wine, lot, onClose, onSubmit }) {
         <div>
           <label className="mb-2 block text-sm text-zinc-300">마신 시각</label>
           <input
-            type="datetime-local"
+            type="date"
             value={drankAt}
             onChange={(e) => setDrankAt(e.target.value)}
             className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base"
